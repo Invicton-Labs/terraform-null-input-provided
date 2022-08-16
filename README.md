@@ -89,7 +89,7 @@ module "existing" {
 }
 
 // Use the demo module, where an externally generated value IS NOT provided
-module "no_existing" {
+module "non_existing" {
   source                 = "./demo"
 }
 ```
@@ -97,6 +97,7 @@ module "no_existing" {
 ### Problem
 
 For the module, you might initially try something like this:
+`./demo/main.tf`
 ```terraform
 variable "existing_random_string" {
   type    = string
@@ -185,7 +186,7 @@ Terraform will perform the following actions:
       + upper       = true
     }
 
-  # module.not_existing.random_string.internal[0] will be created
+  # module.non_existing.random_string.internal[0] will be created
   + resource "random_string" "internal" {
       + id          = (known after apply)
       + length      = 16
@@ -204,12 +205,14 @@ Terraform will perform the following actions:
 Plan: 2 to add, 0 to change, 0 to destroy.
 ```
 
+As you can see, it correctly decides *not* to create a `random_string` resource for the `existing` module, and *does* create a `random_string` resource for the `non_existing` module.
+
 For a real-world example, see our [Invicton-Labs/github-oidc/aws](https://registry.terraform.io/modules/Invicton-Labs/github-oidc/aws/latest) module, which uses it to determine whether a `aws_iam_openid_connect_provider` resource should be created within the module.
 
 
 ## Limitations
 
-Always keep in mind that if there's a possibility that the `input` value **could** be a value other than `null` AND whether it is or not isn't known until the `apply` step, it will return `true` for the `provided` output, even if the input does turn out to be `null` during the apply step.
+Always keep in mind that if there's a possibility that the `input` value **could** be a value other than `null` **and** whether it is or not isn't known until the `apply` step, it will return `true` for the `provided` output, even if the input does turn out to be `null` during the apply step.
 
 This means that you cannot use this module to conditionally create a resource based on a value that isn't known until the `apply` step. For example:
 
@@ -251,4 +254,4 @@ Terraform will perform the following actions:
     }
 ```
 
-Since it's the input value *could* be non-null, and we don't know during the plan step whether it will be or not, the module will return `true` for the `provided` output, and `0` for the `one_if_not_provided`. In this case, we're not providing the external random string (the year is not less than 2022), so we *do* want the module to create an internal random string, but it won't do that because it doesn't know during the plan step if the input value will be `null` or not (`timestamp()` doesn't provide a known value until the apply step).
+Since it's the input value *could* be non-null, and we don't know during the plan step whether it will be or not, the module will return `true` for the `provided` output, and `0` for the `one_if_not_provided` output. In this case, we're not providing the external random string (the year is not less than 2022), so we *do* want the module to create an internal random string, but it won't do that because it doesn't know during the plan step if the input value will be `null` or not (`timestamp()` doesn't provide a known value until the apply step).
