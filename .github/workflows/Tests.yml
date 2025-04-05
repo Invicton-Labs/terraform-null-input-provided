@@ -1,0 +1,58 @@
+name: "Test"
+
+on: [push, pull_request]
+
+jobs:
+  Matrix:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate Matrix
+        id: matrix
+        uses: Invicton-Labs/terraform-module-testing/matrix@v0.4.0
+        with:
+          minimum_tf_version: '1.11.3'
+          additional_runners: 'macos-13, windows-2019'
+
+      - name: Output Matrix
+        run: |
+          echo "Strategy: ${{ steps.matrix.outputs.strategy }}"
+
+    outputs:
+      strategy: ${{ steps.matrix.outputs.strategy }}
+          
+  Test:
+    needs: [Matrix]
+    strategy: ${{ fromJSON(needs.Matrix.outputs.strategy)}}
+    runs-on: ${{ matrix.runs-on }}
+    container: ${{ matrix.container }}
+    steps:
+      - name: Initialize - Pass
+        id: init-pass
+        uses: Invicton-Labs/terraform-module-testing/initialize@v0.4.0
+
+      # No initialization is required for the base version, it's handled in the action above
+
+      - name: Test (Base Version)
+        id: test-base
+        run: terraform test
+        
+      - name: Init (Multi Version)
+        id: init-multi
+        working-directory: ./multi
+        run: terraform init
+
+      - name: Test (Multi Version)
+        id: test-multi
+        working-directory: ./multi
+        run: terraform test
+          
+  # This job just waits for all other jobs to pass. We have it here
+  # so our branch protection rule can reference a single job, instead
+  # of needing to list every matrix value of every job above.
+  Passed:
+    runs-on: ubuntu-latest
+    needs: [Test]
+    steps:
+    - name: Mark tests as passed
+      run: echo "🎉"

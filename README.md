@@ -7,8 +7,8 @@ This is extremely useful when using a conditional count value for a resource in 
 It does this by taking advantage of Terraform's typing system. If an input is `null`, and is known to be `null` during the plan step (i.e. not a ternary where it *might* be null, such as `timestamp() == "2022-08-16T07:44:12Z" ? "foo" : null`), then it uses a default value of a unique type, and does a comparison of the input with the default value. If the input was known to be `null`, it will return `false` since the input variable value will match the unique default type.
 
 Special cases:
-- The only case we can find where the `provided` output will be unknown at the plan step (`known after apply`) is when the input is a ternary where the condition isn't known until the apply step AND both sides of the ternary are `null`, e.g. `uuid() == "" ? null : null`.
-- If the input may or may not be null, depending on a condition that isn't known until the apply step, then the `provided` output will be `true` during the plan step (e.g. `timestamp() == "2022-08-16T07:44:12Z" ? "foo" : null`).
+- If the input may or may not be null, depending on a condition that isn't known until the apply step, even if we know looking at it that the input value will evaluate to `null` (e.g. `timestamp() == "" ? "foo" : null`), then the `provided` output will be `true`.
+- If the `input` variable is given a ternary where the condition isn't known until apply-time, but both sides of the ternary are `null` (e.g. `uuid() == "" ? null : null`), Terraform seems to discard the condition evalution and knows during the plan step that the result will be `null` regardless of the condition. Therefore, the module will return `false` for the `provided` output since the input is known to be `null` during the plan step.
 
 
 ### Example:
@@ -38,6 +38,14 @@ output "provided_known_null" {
     value = module.provided_known_null.provided
 }
 
+module "provided_unknown_possibly_null" {
+    source = "Invicton-Labs/input-provided/null"
+    input = uuid() == "" ? "bar" : null
+}
+output "provided_unknown_possibly_null" {
+    value = module.provided_unknown_possibly_null.provided
+}
+
 module "provided_unknown_definitely_null" {
     source = "Invicton-Labs/input-provided/null"
     input = uuid() == "" ? null : null
@@ -46,13 +54,6 @@ output "provided_unknown_definitely_null" {
     value = module.provided_unknown_definitely_null.provided
 }
 
-module "provided_unknown_possibly_null" {
-    source = "Invicton-Labs/input-provided/null"
-    input = uuid() == "" ? "bar" : null
-}
-output "provided_unknown_possibly_null" {
-    value = module.provided_unknown_possibly_null.provided
-}
 ```
 
 `terraform apply`
@@ -62,12 +63,12 @@ Plan: 0 to add, 0 to change, 0 to destroy.
 Changes to Outputs:
   + provided_known_null              = false
   + provided_known_string            = true
-  + provided_unknown_definitely_null = (known after apply)
+  + provided_unknown_definitely_null = false
   + provided_unknown_possibly_null   = true
   + provided_unknown_string          = true
 ```
 
-As we can see, it will return `true` whenever any value that could *possibly* not be `null` is provided, `false` if a value that is known to be `null` is provided, and `unknown` (`known after apply`) if the input is a ternary where the type cannot be determined during the plan step (both sides of the ternary are `null`).
+As we can see, it will return `true` whenever any value that could *possibly* not be `null` is provided, and `false` if a value that is known to be `null` is provided.
 
 
 ## Usage
@@ -254,4 +255,9 @@ Terraform will perform the following actions:
     }
 ```
 
-Since it's the input value *could* be non-null, and we don't know during the plan step whether it will be or not, the module will return `true` for the `provided` output, and `0` for the `one_if_not_provided` output. In this case, we're not providing the external random string (the year is not less than 2022), so we *do* want the module to create an internal random string, but it won't do that because it doesn't know during the plan step if the input value will be `null` or not (`timestamp()` doesn't provide a known value until the apply step).
+Since it's the input value *could* be non-null, and we don't know during the plan step whether it will be or not, the module will return `true` for the `provided` output. In this case, we're not providing the external random string (the year is not less than 2022), so we *do* want the module to create an internal random string, but it won't do that because it doesn't know during the plan step if the input value will be `null` or not (`timestamp()` doesn't provide a known value until the apply step).
+
+
+## Multi Version
+
+In the `multi` subdirectory is a version of this module that can handle multiple inputs in a key/value map. This is useful if you want to check multiple values, but don't want to initialize many instances of this module.
